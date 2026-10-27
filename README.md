@@ -89,34 +89,6 @@ La planification est un aide-mémoire personnel : elle n’envoie pas d’invita
 - Rendez-vous visuels, modifiables et supprimables.
 - Isolement des données par utilisateur côté API et base de données.
 
-## Déploiement sur le serveur du cours IHME
-
-Le projet est associé au dépôt GitHub [`thib01-hub/App-web`](https://github.com/thib01-hub/App-web). L’image attendue est `ghcr.io/thib01-hub/app-web` et l’application est publiée sous le chemin `/app-web/`.
-
-Le workflow `.github/workflows/publish.yml`, adapté au modèle fourni par le cours, construit l’image sur chaque push vers `main` ou `master` et la publie dans GitHub Container Registry. Le push ne déploie pas automatiquement l’application. Pour mettre une version en ligne, lancer manuellement **Actions → Construire et publier l’image → Run workflow**, cocher **Déployer cette version après construction**, puis démarrer le workflow. Le serveur reçoit le digest immuable de l’image construite.
-
-### Paramètres GitHub Actions
-
-Dans **Settings → Secrets and variables → Actions** du dépôt `App-web`, configurer :
-
-| Type | Nom | Valeur |
-| --- | --- | --- |
-| Secret | `IHME_DEPLOY_TOKEN` | Le jeton privé de l’accès `p07` |
-| Variable | `IHME_DEPLOY_URL` | L’URL HTTPS complète de déploiement indiquée dans le fichier d’accès, terminée par `/__deploy/p07` |
-| Variable | `IHME_BASE_PATH` | `/app-web/` |
-
-Les fichiers `acces-p07.txt` et `deploy.curl`, s’ils sont fournis, sont privés et ne doivent être ni ajoutés à Git ni inclus dans les captures publiques. `.gitignore` et `.dockerignore` les excluent. Ne pas saisir le jeton dans le code ou dans une conversation.
-
-### Contrat d’hébergement
-
-- Express écoute sur le port `3000`, sert le frontend compilé et expose l’API sous `/api`.
-- Le serveur fournit `DATABASE_URL`. Le pool PostgreSQL est limité à quatre connexions.
-- `GET /api/health` vérifie PostgreSQL et répond avec un état de santé.
-- Le workflow transmet `IHME_BASE_PATH` au build Vite. Le client appelle l’API avec `import.meta.env.BASE_URL`, donc le préfixe `/app-web/` fonctionne en ligne et les appels restent sous `/api` côté Express.
-- L’image exécute le serveur avec l’utilisateur non privilégié `node`.
-- N’utiliser que des données fictives pour les démonstrations et le suivi pédagogique.
-
-Guide du cours : [Publier puis déployer son projet IHME](https://github.com/cedrictisseyre/ihme-suivi/blob/main/docs/deployer-son-projet.md). Adresse du projet : <https://node219697-ihme26.jcloud.ik-server.com/app-web/>. Galerie de la promotion : <https://node219697-ihme26.jcloud.ik-server.com/>.
 
 ## Décisions et évolutions possibles
 
