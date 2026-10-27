@@ -3,4 +3,6 @@ dist/
 .env
 .env.*
 !.env.example
+acces-*.txt
+deploy.curl
 *.log

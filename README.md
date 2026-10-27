@@ -1,75 +1,126 @@
-# Matchpoint — suivi de tennis
+# Matchpoint — suivi des performances sportives
 
-MVP de suivi de performances sportives, actuellement consacré au tennis. L’application permet à plusieurs utilisateurs de tenir chacun leur historique privé.
+## Vision du projet
 
-## Architecture
+Créer une application web ergonomique destinée à plusieurs utilisateurs. Chaque personne possède un compte et saisit ses propres données sportives. Le produit est d’abord optimisé pour ordinateur ; les données ne sont pas publiques ou partagées entre comptes.
 
-- **Frontend :** React et Vite. En développement, Vite relaie `/api` vers Express.
-- **Serveur :** Node.js et Express. En production, Express sert le build Vite et l’API sur la même origine.
-- **Données :** PostgreSQL et `pg`. Les requêtes SQL utilisent des paramètres ; les matchs et rendez-vous sont rattachés au compte connecté.
-- **Connexion :** mots de passe hachés avec bcrypt ; cookie de session HttpOnly et sessions persistées dans PostgreSQL.
-- **Déploiement :** Docker Compose avec les services `app` et `db`, et volume PostgreSQL persistant.
+Les sports envisagés à terme sont le tennis, le badminton, le tennis de table, le padel, le squash, le cyclisme et la course à pied. Le MVP porte uniquement sur le tennis. Toutes les activités sont saisies manuellement : aucune connexion à une montre ou à un service sportif n’est prévue.
 
-## Démarrer avec Docker
+## Architecture technique
 
-Copier `.env.example` vers `.env`, puis remplacer `POSTGRES_PASSWORD` et `SESSION_SECRET` par des valeurs propres à l’instance. Ces secrets restent dans `.env`, qui n’est pas versionné.
-
-```sh
-docker compose up --build -d
+```text
+Navigateur : React, fichiers préparés par Vite
+                  │ HTTP, même origine en production
+                  ▼
+          app : Node.js / Express
+                  │ SQL paramétré avec pg
+                  ▼
+          db : PostgreSQL + volume persistant
 ```
 
-Ouvrir <http://localhost:3000>. Les comptes se créent depuis l’écran d’accueil. Le volume `postgres-data` conserve les données après l’arrêt des conteneurs. Pour arrêter : `docker compose down` (ne pas ajouter `-v` si la base doit être conservée).
+## Besoin fonctionnel du MVP tennis
 
-## Développement local
+### Comptes et confidentialité
 
-Pré-requis : Node.js 24 ou plus récent et Docker Compose.
+- Un visiteur peut créer un compte et se connecter.
+- Un utilisateur connecté peut consulter, créer, modifier et supprimer ses matchs et ses rendez-vous.
+- Chaque compte ne peut accéder qu’à ses propres données.
+- Les états de création de compte, connexion, déconnexion et absence de données sont pris en charge.
 
-```sh
-npm install
+### Enregistrer un match joué
+
+L’action principale est **« Enregistrer un match »**. Un match contient :
+
+- sa nature : amical ou tournoi ;
+- son format : simple ou double ;
+- sa date, son lieu et sa surface ;
+- le format de rencontre : deux ou trois sets gagnants, avec ou sans super tie-break ;
+- le score de chaque set, exprimé en jeux, avec identification d’un super tie-break ;
+- sa durée en minutes et le ressenti du sportif sur une échelle de 1 à 10.
+
+Pour un tournoi, le tour (par exemple premier tour ou demi-finale) est conservé séparément du lieu.
+
+En simple, les informations des deux joueurs, dont l’adversaire, sont saisies. En double, les noms, prénoms et classements des quatre participants sont saisis, répartis en deux équipes. L’équipe de l’utilisateur est clairement indiquée.
+
+Le classement FFT est saisi manuellement pour chaque participant au moment du match. La valeur `NC` est prévue. Les rangs ont un ordre explicite allant du moins bien classé (`NC`) au mieux classé (`-30`) ; les comparaisons se font selon cet ordre et jamais comme du texte.
+
+Le score conserve les jeux de chaque set, sans les points à l’intérieur des jeux. Exemple :
+
+```text
+Jean vs Arnaud
+6-4
+5-7
+7-1 (super tie-break)
 ```
 
-Copier `.env.example` en `.env`, puis lancer PostgreSQL :
+### Historique et statistiques
 
-```sh
-docker compose up -d db
-```
+L’historique présente la date, le résultat, l’adversaire ou les joueurs concernés, le score et le contexte du match. Les statistiques de simple et de double restent séparées et affichent :
 
-Dans un terminal, démarrer l’API :
+- nombre de matchs joués, victoires et défaites ;
+- ratio de victoires (victoires divisées par matchs joués) ;
+- meilleure victoire, c’est-à-dire une victoire contre l’adversaire au meilleur classement FFT affronté ;
+- graphique du nombre de matchs par mois ;
+- taux de victoire contre des adversaires mieux classés et contre des adversaires moins bien classés.
 
-```sh
-npm run dev:api
-```
+Le tableau de bord indique quand une statistique n’est pas encore calculable, notamment en l’absence de matchs ou de classements exploitables.
 
-Dans un second terminal, démarrer Vite :
+Pour le double, les taux contre des équipes mieux ou moins bien classées sont comparés à partir de la moyenne des rangs numériques des deux équipes. Les matchs sans classement complet sont exclus de ces deux taux.
 
-```sh
-npm run dev
-```
+### Planifier un match
 
-Ouvrir <http://localhost:5173>. Vite transmet les appels `/api` au serveur Express sur le port 3000.
+Un rendez-vous à venir contient la date, l’heure, le lieu, le nom de l’adversaire et son classement éventuel. Il apparaît sous forme de carte récapitulative et peut être modifié ou supprimé.
 
-## Fonctionnalités
+La planification est un aide-mémoire personnel : elle n’envoie pas d’invitation ni de notification. Un rendez-vous ne devient pas automatiquement un match joué ; le résultat est enregistré manuellement dans l’historique.
 
-- Création de compte, connexion, déconnexion et sessions persistantes.
-- Enregistrement, consultation, modification et suppression des matchs amicaux ou de tournoi, en simple ou en double.
-- Participants, classement FFT saisi au moment du match, équipes de double, surface, format, tour, durée, ressenti et score détaillé par set avec indicateur de super tie-break.
-- Tableau de bord et historique avec indicateurs distincts pour simple et double : matchs, victoires, défaites, ratio, meilleure victoire, matchs par mois et taux de victoire selon le classement adverse.
-- Rendez-vous à venir, modifiables et supprimables. Ils ne deviennent pas automatiquement des matchs joués : le résultat est à enregistrer manuellement.
+### Ergonomie et périmètre
 
-Les classements suivent un ordre explicite du moins bien classé (`NC`) au mieux classé (`-30`) et ne sont pas comparés comme du texte. Pour le double, les taux contre des équipes mieux ou moins bien classées s’appuient sur la moyenne des rangs numériques des deux équipes ; les matchs sans rang complet sont exclus de ces deux taux.
+- L’interface est organisée autour du tableau de bord, de l’historique, de l’enregistrement des matchs et de la planification.
+- Les formulaires guident la saisie et présentent les erreurs.
+- Les chiffres de simple et de double ne sont jamais agrégés.
+- Le MVP n’ajoute pas de fonctionnalités sportives non prévues et ne développe pas les autres sports envisagés.
 
-## Publication et déploiement
+## Fonctionnalités livrées
 
-`.github/workflows/ci.yml` construit le frontend et l’image Docker sur les pushes et pull requests. `.github/workflows/publish.yml` publie l’image dans GitHub Container Registry lorsqu’un tag de version `v*.*.*` est poussé. Le dépôt GitHub doit autoriser les Actions à publier des packages.
+- Inscription, connexion, déconnexion et sessions persistantes.
+- Gestion complète des matchs amicaux et de tournoi, en simple et en double.
+- Classements FFT, équipes, surfaces, format, tour, score par set, super tie-break, durée et ressenti.
+- Tableau de bord, historique et statistiques séparées entre simple et double.
+- Rendez-vous visuels, modifiables et supprimables.
+- Isolement des données par utilisateur côté API et base de données.
 
-Le modèle de déploiement autonome est dans `deploy/student/compose.yaml`. Fournir `APP_IMAGE`, `POSTGRES_USER`, `POSTGRES_PASSWORD` et `SESSION_SECRET` dans l’environnement du serveur, puis exécuter :
+## Déploiement sur le serveur du cours IHME
 
-```sh
-docker compose -f deploy/student/compose.yaml up -d
-```
+Le projet est associé au dépôt GitHub [`thib01-hub/App-web`](https://github.com/thib01-hub/App-web). L’image attendue est `ghcr.io/thib01-hub/app-web` et l’application est publiée sous le chemin `/app-web/`.
 
-Configurer le reverse proxy HTTPS devant le port de l’application. Le cookie de session devient `Secure` lorsque `NODE_ENV=production`.
+Le workflow `.github/workflows/publish.yml`, adapté au modèle fourni par le cours, construit l’image sur chaque push vers `main` ou `master` et la publie dans GitHub Container Registry. Le push ne déploie pas automatiquement l’application. Pour mettre une version en ligne, lancer manuellement **Actions → Construire et publier l’image → Run workflow**, cocher **Déployer cette version après construction**, puis démarrer le workflow. Le serveur reçoit le digest immuable de l’image construite.
 
-## Périmètre et décisions
+### Paramètres GitHub Actions
 
-Le MVP traite le tennis uniquement. Il n’invite pas d’adversaires, n’envoie pas de notifications et ne connecte aucun service sportif. Les rencontres planifiées sont des notes personnelles. Les classements utilisés sont ceux saisis manuellement par le compte au moment du match.
+Dans **Settings → Secrets and variables → Actions** du dépôt `App-web`, configurer :
+
+| Type | Nom | Valeur |
+| --- | --- | --- |
+| Secret | `IHME_DEPLOY_TOKEN` | Le jeton privé de l’accès `p07` |
+| Variable | `IHME_DEPLOY_URL` | L’URL HTTPS complète de déploiement indiquée dans le fichier d’accès, terminée par `/__deploy/p07` |
+| Variable | `IHME_BASE_PATH` | `/app-web/` |
+
+Les fichiers `acces-p07.txt` et `deploy.curl`, s’ils sont fournis, sont privés et ne doivent être ni ajoutés à Git ni inclus dans les captures publiques. `.gitignore` et `.dockerignore` les excluent. Ne pas saisir le jeton dans le code ou dans une conversation.
+
+### Contrat d’hébergement
+
+- Express écoute sur le port `3000`, sert le frontend compilé et expose l’API sous `/api`.
+- Le serveur fournit `DATABASE_URL`. Le pool PostgreSQL est limité à quatre connexions.
+- `GET /api/health` vérifie PostgreSQL et répond avec un état de santé.
+- Le workflow transmet `IHME_BASE_PATH` au build Vite. Le client appelle l’API avec `import.meta.env.BASE_URL`, donc le préfixe `/app-web/` fonctionne en ligne et les appels restent sous `/api` côté Express.
+- L’image exécute le serveur avec l’utilisateur non privilégié `node`.
+- N’utiliser que des données fictives pour les démonstrations et le suivi pédagogique.
+
+Guide du cours : [Publier puis déployer son projet IHME](https://github.com/cedrictisseyre/ihme-suivi/blob/main/docs/deployer-son-projet.md). Adresse du projet : <https://node219697-ihme26.jcloud.ik-server.com/app-web/>. Galerie de la promotion : <https://node219697-ihme26.jcloud.ik-server.com/>.
+
+## Décisions et évolutions possibles
+
+- Les rendez-vous et matchs joués sont des enregistrements distincts ; il n’y a pas de conversion automatique.
+- Les classements sont ceux saisis par l’utilisateur au moment du match.
+- Les sports autres que le tennis, les invitations, les notifications et les connexions à des services tiers restent hors périmètre du MVP.
+- Une action explicite pour convertir un rendez-vous en match joué pourra être ajoutée si elle est souhaitée.

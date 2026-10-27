@@ -15,7 +15,7 @@ app.disable('x-powered-by'); app.use(express.json({ limit: '100kb' }));
 app.use(session({ store: new PgStore({ pool, tableName: 'sessions', createTableIfMissing: false }), secret: process.env.SESSION_SECRET || 'dev-secret-change-me', resave: false, saveUninitialized: false, cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 86400000 } }));
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const auth = (req,res,next) => req.session.user ? next() : res.status(401).json({error:'Connectez-vous pour continuer.'});
-app.get('/api/health', asyncRoute(async (_req,res)=>{await pool.query('SELECT 1');res.json({ok:true});}));
+app.get('/api/health', asyncRoute(async (_req,res)=>{await pool.query('SELECT 1');res.json({status:'ok'});}));
 app.get('/api/auth/me',(req,res)=>res.json({user:req.session.user||null}));
 app.post('/api/auth/register',asyncRoute(async(req,res)=>{
  const {email,password,name}=req.body||{}; const normalized=String(email||'').trim().toLowerCase();

@@ -1,16 +1,18 @@
-FROM node:24-alpine AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npm run build
+ARG BASE_PATH=/
+RUN npm run build -- --base="${BASE_PATH}"
 
-FROM node:24-alpine
+FROM node:24-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production PORT=3000
 COPY package*.json ./
-RUN npm install --omit=dev
-COPY server ./server
-COPY --from=build /app/dist ./dist
+RUN npm install --omit=dev && npm cache clean --force
+COPY --chown=node:node server ./server
+COPY --from=build --chown=node:node /app/dist ./dist
+USER node
 EXPOSE 3000
 CMD ["node", "server/index.js"]

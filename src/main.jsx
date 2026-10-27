@@ -5,7 +5,8 @@ import './style.css';
 const RANKS=['NC','40','30/5','30/4','30/3','30/2','30/1','30','15/5','15/4','15/3','15/2','15/1','15','5/6','4/6','3/6','2/6','1/6','0','-2/6','-4/6','-15','-30'];
 const localToday=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 const blankMatch=()=>({match_type:'friendly',format:'singles',played_on:localToday(),venue:'',surface:'Dur',match_format:'2 sets gagnants',tournament_round:'',duration_minutes:90,feeling:7,winner_team:1,players:[{name:'',rank:'NC',team:1},{name:'',rank:'NC',team:2}],sets:[{a:'6',b:'4',super:false},{a:'6',b:'3',super:false}]});
-async function api(url,options={}){const r=await fetch('/api'+url,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});if(r.status===204)return null;const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Une erreur est survenue.');return data;}
+const API_BASE=`${import.meta.env.BASE_URL}api`;
+async function api(url,options={}){const r=await fetch(`${API_BASE}${url}`,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});if(r.status===204)return null;const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Une erreur est survenue.');return data;}
 function App(){const [user,setUser]=useState(undefined),[authMode,setAuthMode]=useState('login'),[page,setPage]=useState('dashboard'),[matches,setMatches]=useState([]),[appointments,setAppointments]=useState([]),[toast,setToast]=useState(''),[modal,setModal]=useState(null);
  useEffect(()=>{api('/auth/me').then(x=>setUser(x.user)).catch(()=>setUser(null));},[]);
  useEffect(()=>{if(!user)return;Promise.all([api('/matches'),api('/appointments')]).then(([m,a])=>{setMatches(m);setAppointments(a)}).catch(e=>notify(e.message));},[user]);
