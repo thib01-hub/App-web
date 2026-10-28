@@ -20,6 +20,26 @@ export async function initDb() {
     winner_team SMALLINT NOT NULL CHECK(winner_team IN (1,2)), players JSONB NOT NULL, sets JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
+  // Additive, idempotent migration: keeps existing match rows and converts their
+  // participant names to the first/last-name shape used by the updated form.
+  await pool.query(`ALTER TABLE tennis_matches DROP CONSTRAINT IF EXISTS tennis_matches_match_type_check`);
+  await pool.query(`ALTER TABLE tennis_matches ADD CONSTRAINT tennis_matches_match_type_check CHECK (match_type IN ('friendly','tournament','training'))`);
+  await pool.query(`ALTER TABLE tennis_matches ALTER COLUMN winner_team DROP NOT NULL`);
+  await pool.query(`UPDATE tennis_matches SET match_format = CASE match_format
+    WHEN '2 sets gagnants' THEN 'best_of_3'
+    WHEN '2 sets gagnants + super tie-break' THEN 'best_of_3_super'
+    WHEN '3 sets gagnants' THEN 'best_of_5'
+    WHEN '3 sets gagnants + super tie-break' THEN 'best_of_5_super'
+    ELSE match_format END
+    WHERE match_format IN ('2 sets gagnants','2 sets gagnants + super tie-break','3 sets gagnants','3 sets gagnants + super tie-break')`);
+  await pool.query(`UPDATE tennis_matches SET players = (
+    SELECT jsonb_agg(
+      (p - 'name') || jsonb_build_object(
+        'first_name', COALESCE(p->>'first_name', split_part(COALESCE(p->>'name',''), ' ', 1)),
+        'last_name', COALESCE(p->>'last_name', NULLIF(substr(COALESCE(p->>'name',''), length(split_part(COALESCE(p->>'name',''), ' ', 1)) + 2), ''))
+      ) ORDER BY ord
+    ) FROM jsonb_array_elements(players) WITH ORDINALITY AS x(p,ord)
+  ) WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(tennis_matches.players) AS participant(value) WHERE participant.value ? 'name')`);
   await pool.query(`CREATE TABLE IF NOT EXISTS appointments (
     id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     match_date DATE NOT NULL, match_time TIME NOT NULL, venue TEXT NOT NULL, opponent TEXT NOT NULL, opponent_rank TEXT,

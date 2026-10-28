@@ -29,11 +29,29 @@ app.get('/api/ranks',(_req,res)=>res.json({ranks}));
 app.get('/api/matches',auth,asyncRoute(async(req,res)=>{const {rows}=await pool.query('SELECT * FROM tennis_matches WHERE user_id=$1 ORDER BY played_on DESC,id DESC',[req.session.user.id]);res.json(rows);}));
 app.post('/api/matches',auth,saveMatch);
 app.put('/api/matches/:id',auth,saveMatch);
-async function saveMatch(req,res){const b=req.body||{};if(!['friendly','tournament'].includes(b.match_type)||!['singles','doubles'].includes(b.format)||!b.played_on||!b.venue||!b.surface||!b.match_format||!Array.isArray(b.sets)||!b.sets.length||!Array.isArray(b.players)||b.players.length!==(b.format==='singles'?2:4)||!['1','2',1,2].includes(b.winner_team)||!Number.isInteger(Number(b.duration_minutes))||Number(b.duration_minutes)<1||Number(b.feeling)<1||Number(b.feeling)>10||b.match_type==='tournament'&&!b.tournament_round)return res.status(400).json({error:'Vérifiez le format du match, les joueurs, le score, la durée et le ressenti.'});
- if(b.players.some(p=>!String(p.name||'').trim()||!ranks.includes(p.rank))||(b.format==='doubles'&&[1,2].some(t=>b.players.filter(p=>Number(p.team)===t).length!==2)))return res.status(400).json({error:'Renseignez les joueurs, leurs classements FFT et deux joueurs par équipe en double.'});
- for(const s of b.sets) if(!Number.isInteger(+s.a)||!Number.isInteger(+s.b)||+s.a<0||+s.b<0||+s.a===+s.b)return res.status(400).json({error:'Chaque set doit contenir deux scores différents, en jeux.'});
- const wonA=b.sets.filter(s=>Number(s.a)>Number(s.b)).length,wonB=b.sets.length-wonA;if((wonA>wonB?1:2)!==Number(b.winner_team))return res.status(400).json({error:'Le résultat choisi ne correspond pas aux sets saisis.'});
- const userId=req.session.user.id, params=[userId,b.match_type,b.format,b.played_on,b.venue,b.surface,b.match_format,b.tournament_round||null,Number(b.duration_minutes),Number(b.feeling),Number(b.winner_team),JSON.stringify(b.players),JSON.stringify(b.sets)];
+async function saveMatch(req,res){const b=req.body||{};const training=b.match_type==='training';const formatKey=b.match_format;const allowedFormats=['best_of_3','best_of_3_super','best_of_5','best_of_5_super'];
+ if(!['friendly','tournament','training'].includes(b.match_type)||!['singles','doubles'].includes(b.format)||!b.played_on||!b.venue||!b.surface||(!training&&!allowedFormats.includes(formatKey))||!Array.isArray(b.sets)||!b.sets.length||!Array.isArray(b.players)||b.players.length!==(b.format==='singles'?2:4)||!Number.isInteger(Number(b.duration_minutes))||Number(b.duration_minutes)<1||!Number.isInteger(Number(b.feeling))||Number(b.feeling)<1||Number(b.feeling)>10||b.match_type==='tournament'&&!b.tournament_round)return res.status(400).json({error:'Vérifiez le format du match, les joueurs, le score, la durée et le ressenti.'});
+ if(b.players.some(p=>!String(p.first_name||p.name||'').trim()||!String(p.last_name||p.name||'').trim()||!ranks.includes(p.rank))||(b.format==='doubles'&&[1,2].some(t=>b.players.filter(p=>Number(p.team)===t).length!==2)))return res.status(400).json({error:'Renseignez le prénom, le nom, le classement FFT et deux joueurs par équipe en double.'});
+ const sets=b.sets.map(s=>({...s,a:Number(s.a),b:Number(s.b),super:training?false:Boolean(s.super)}));
+ if(sets.some(s=>!Number.isInteger(s.a)||!Number.isInteger(s.b)||s.a<0||s.b<0||(!training&&s.a===s.b)))return res.status(400).json({error:training?'Chaque manche doit contenir deux scores entiers positifs ou nuls.':'Chaque set officiel doit avoir deux scores différents.'});
+ let winnerTeam=null;
+ if(training){const a=sets.filter(s=>s.a>s.b).length,c=sets.filter(s=>s.b>s.a).length;winnerTeam=a===c?null:a>c?1:2;}
+ else {
+   const bestOf=formatKey.startsWith('best_of_3')?3:5, target=(bestOf+1)/2, hasSuper=formatKey.endsWith('_super');
+   const maxSets=bestOf, wins=[0,0];let ended=false;
+   for(let i=0;i<sets.length;i++){const s=sets[i],decisive=hasSuper&&i===maxSets-1;
+     if(ended)return res.status(400).json({error:'La rencontre doit s’arrêter dès qu’une équipe atteint le nombre de sets gagnants.'});
+     if(Boolean(s.super)!==decisive)return res.status(400).json({error:decisive?'Le dernier set doit être saisi comme un super tie-break.':'Seul le set décisif peut être un super tie-break.'});
+     const hi=Math.max(s.a,s.b),lo=Math.min(s.a,s.b);
+     const valid=decisive?(hi>=10&&hi-lo>=2):(hi===6&&lo<=4)||(hi===7&&(lo===5||lo===6));
+     if(!valid)return res.status(400).json({error:decisive?'Le super tie-break se gagne à 10 points minimum avec 2 points d’écart.':'Score de set classique invalide. Un set se termine à 6 jeux avec 2 jeux d’écart, ou à 7-5/7-6.'});
+     wins[s.a>s.b?0:1]++;if(wins[0]===target||wins[1]===target)ended=true;
+   }
+   if(sets.length<target||sets.length>maxSets||!ended)return res.status(400).json({error:'Le nombre de sets et le résultat ne correspondent pas au format de rencontre choisi.'});
+   winnerTeam=wins[0]>wins[1]?1:2;
+ }
+ const players=b.players.map(p=>({first_name:String(p.first_name||p.name||'').trim().split(' ')[0],last_name:String(p.last_name||p.name||'').trim().split(' ').slice(1).join(' '),rank:p.rank,team:Number(p.team)}));
+ const userId=req.session.user.id, params=[userId,b.match_type,b.format,b.played_on,b.venue,b.surface,training?'custom':formatKey,b.tournament_round||null,Number(b.duration_minutes),Number(b.feeling),winnerTeam,JSON.stringify(players),JSON.stringify(sets)];
  const sql=`${req.method==='POST'?'INSERT INTO tennis_matches(user_id,match_type,format,played_on,venue,surface,match_format,tournament_round,duration_minutes,feeling,winner_team,players,sets) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb) RETURNING *':'UPDATE tennis_matches SET match_type=$2,format=$3,played_on=$4,venue=$5,surface=$6,match_format=$7,tournament_round=$8,duration_minutes=$9,feeling=$10,winner_team=$11,players=$12::jsonb,sets=$13::jsonb WHERE user_id=$1 AND id=$14 RETURNING *'}`;
  const result=await pool.query(sql,req.method==='POST'?params:[...params,req.params.id]);if(!result.rowCount)return res.status(404).json({error:'Match introuvable.'});res.status(req.method==='POST'?201:200).json(result.rows[0]);}
 app.delete('/api/matches/:id',auth,asyncRoute(async(req,res)=>{const r=await pool.query('DELETE FROM tennis_matches WHERE id=$1 AND user_id=$2',[req.params.id,req.session.user.id]);res.status(r.rowCount?204:404).end();}));
